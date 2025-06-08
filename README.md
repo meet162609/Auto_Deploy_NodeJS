@@ -18,6 +18,72 @@ Create a script:
 ```bash
 nano master.sh
 ```
+```script
+#!/bin/bash
+
+set -e
+
+echo "[Step 1] Load Kernel Modules..."
+cat <<EOF | sudo tee /etc/modules-load.d/containerd.conf
+overlay
+br_netfilter
+EOF
+
+sudo modprobe overlay
+sudo modprobe br_netfilter
+
+echo "[Step 2] Set Sysctl Parameters for Kubernetes Networking..."
+cat <<EOF | sudo tee /etc/sysctl.d/kubernetes.conf
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
+EOF
+
+sudo sysctl --system
+
+echo "[Step 3] Install Required Packages..."
+sudo apt update -y
+sudo apt install -y apt-transport-https ca-certificates curl gpg
+
+echo "[Step 4] Add Kubernetes APT Repository..."
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | \
+  sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] \
+https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" | \
+  sudo tee /etc/apt/sources.list.d/kubernetes.list > /dev/null
+
+sudo apt update
+
+echo "[Step 5] Install Kubernetes Components..."
+sudo apt install -y kubelet kubeadm kubectl
+sudo apt-mark hold kubelet kubeadm kubectl
+
+echo "[Step 6] Install and Configure containerd..."
+sudo apt install -y containerd
+sudo mkdir -p /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+
+sudo systemctl restart containerd
+sudo systemctl enable containerd
+
+echo "[Step 7] Initialize Kubernetes Cluster..."
+sudo kubeadm init --pod-network-cidr=192.168.0.0/16
+
+echo "[Step 8] Configure kubectl for Regular User..."
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+echo "[Step 9] Install Calico CNI Plugin..."
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+
+echo "[Step 10] Show Node Status..."
+kubectl get nodes
+
+echo "✅ Kubernetes Master Setup Completed!"
 
 Paste the Kubernetes master setup script (with containerd, kubeadm, kubectl, Calico, etc.)
 
@@ -40,10 +106,63 @@ Create a script:
 ```bash
 nano worker.sh
 ```
+```script
+#!/bin/bash
+
+set -e
+
+echo "[Step 1] Load Kernel Modules..."
+cat <<EOF | sudo tee /etc/modules-load.d/containerd.conf
+overlay
+br_netfilter
+EOF
+
+sudo modprobe overlay
+sudo modprobe br_netfilter
+
+echo "[Step 2] Set Sysctl Parameters..."
+cat <<EOF | sudo tee /etc/sysctl.d/kubernetes.conf
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
+EOF
+
+sudo sysctl --system
+
+echo "[Step 3] Install Required Packages..."
+sudo apt update -y
+sudo apt install -y apt-transport-https ca-certificates curl gpg
+
+echo "[Step 4] Add Kubernetes Repository..."
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | \
+  sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] \
+https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" | \
+  sudo tee /etc/apt/sources.list.d/kubernetes.list > /dev/null
+
+sudo apt-get update
+
+echo "[Step 5] Install Kubernetes Tools..."
+sudo apt-get install -y kubelet kubeadm kubectl
+sudo apt-mark hold kubelet kubeadm kubectl
+
+echo "[Step 6] Install and Configure containerd..."
+sudo apt install -y containerd
+sudo mkdir -p /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+
+sudo systemctl restart containerd
+sudo systemctl enable containerd
+
+echo "[INFO] Worker node setup complete. Now join this node to the cluster using the kubeadm join command from the master node."
 
 Paste the Kubernetes worker setup script.
 
 Run it and then use the join command provided by the master node.
+```
 
 ---
 
