@@ -84,8 +84,7 @@ echo "[Step 10] Show Node Status..."
 kubectl get nodes
 
 echo "✅ Kubernetes Master Setup Completed!"
-
-Paste the Kubernetes master setup script (with containerd, kubeadm, kubectl, Calico, etc.)
+```
 
 Run the script:
 ```bash
