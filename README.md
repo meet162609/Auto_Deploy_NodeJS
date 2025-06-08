@@ -162,6 +162,11 @@ Paste the Kubernetes worker setup script.
 
 Run it and then use the join command provided by the master node.
 ```
+Run the script:
+```bash
+chmod +x worker.sh
+sudo ./worker.sh
+```
 
 ---
 
