@@ -1,4 +1,6 @@
 # 🚀 CI/CD Pipeline for Dockerized Node.js Application Deployment on Kubernetes using Jenkins
+
+![Screenshot](adn.png)
  
 This project sets up a fully automated CI/CD pipeline that builds a Dockerized Node.js application, pushes it to Docker Hub, and deploys it on a Kubernetes cluster using Jenkins.
  
