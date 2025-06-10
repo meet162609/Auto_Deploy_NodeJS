@@ -1,253 +1,306 @@
-# Node.js CI/CD Pipeline using Jenkins, Docker, and Kubernetes
-
-This project automates the deployment of a Dockerized Node.js application using Jenkins, Docker Hub, and Kubernetes on AWS EC2 instances.
-
+# 🚀 CI/CD Pipeline for Dockerized Node.js Application Deployment on Kubernetes using Jenkins
+ 
+This project sets up a fully automated CI/CD pipeline that builds a Dockerized Node.js application, pushes it to Docker Hub, and deploys it on a Kubernetes cluster using Jenkins.
+ 
 ---
-
-## 🔧 Step 1: Launch EC2 Instances
-
-- Launch 2 EC2 instances (Ubuntu 22.04 LTS), type `t2.medium`
-  - One for **Kubernetes Master**
-  - One for **Kubernetes Worker**
-
+ 
+## 🧱 Prerequisites
+ 
+- 2 EC2 Instances (Ubuntu 22.04 LTS) — 1 Master, 1 Worker
+- Docker Installed
+- Jenkins Running in Docker
+- GitHub Repository for your Node.js app
+- Docker Hub Account
+ 
 ---
-
-## 📦 Step 2: Install Kubernetes Master
-
-Create a script:
+ 
+## 🔧 Step-by-Step Setup
+### 📌 Step 1: Update System
 ```bash
+sudo apt update -y
+```
+ 
+### ☸️ Step 2: Configure Kubernetes Master
+#### 1. Create setup script:
+```sh
 nano master.sh
 ```
-```script
+ 
+#### 2. Paste the following into master.sh:
+```sh
 #!/bin/bash
-
 set -e
-
+ 
 echo "[Step 1] Load Kernel Modules..."
 cat <<EOF | sudo tee /etc/modules-load.d/containerd.conf
 overlay
 br_netfilter
 EOF
-
+ 
 sudo modprobe overlay
 sudo modprobe br_netfilter
-
+ 
 echo "[Step 2] Set Sysctl Parameters for Kubernetes Networking..."
 cat <<EOF | sudo tee /etc/sysctl.d/kubernetes.conf
 net.bridge.bridge-nf-call-ip6tables = 1
 net.bridge.bridge-nf-call-iptables = 1
 net.ipv4.ip_forward = 1
 EOF
-
+ 
 sudo sysctl --system
-
+ 
 echo "[Step 3] Install Required Packages..."
 sudo apt update -y
 sudo apt install -y apt-transport-https ca-certificates curl gpg
-
+ 
 echo "[Step 4] Add Kubernetes APT Repository..."
 sudo mkdir -p /etc/apt/keyrings
 curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | \
   sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-
+ 
 echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] \
 https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" | \
   sudo tee /etc/apt/sources.list.d/kubernetes.list > /dev/null
-
+ 
 sudo apt update
-
+ 
 echo "[Step 5] Install Kubernetes Components..."
 sudo apt install -y kubelet kubeadm kubectl
 sudo apt-mark hold kubelet kubeadm kubectl
-
+ 
 echo "[Step 6] Install and Configure containerd..."
 sudo apt install -y containerd
 sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml
 sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
-
+ 
 sudo systemctl restart containerd
 sudo systemctl enable containerd
-
+ 
 echo "[Step 7] Initialize Kubernetes Cluster..."
 sudo kubeadm init --pod-network-cidr=192.168.0.0/16
-
+ 
 echo "[Step 8] Configure kubectl for Regular User..."
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
-
+ 
 echo "[Step 9] Install Calico CNI Plugin..."
 kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
-
+ 
 echo "[Step 10] Show Node Status..."
 kubectl get nodes
-
+ 
 echo "✅ Kubernetes Master Setup Completed!"
 ```
-
-Run the script:
-```bash
+ 
+#### 3. Make script executable and run:
+```sh
 chmod +x master.sh
 sudo ./master.sh
 ```
-
-Verify node:
-```bash
-kubectl get nodes
-```
-
----
-
-## 🔧 Step 3: Install Kubernetes Worker
-
-Create a script:
-```bash
+ 
+### ⚙️ Step 3: Setup Kubernetes Worker
+#### 1. Create setup script:
+```sh
 nano worker.sh
 ```
-```script
+ 
+#### 2. Paste the following into worker.sh:
+```sh
 #!/bin/bash
-
 set -e
-
+ 
 echo "[Step 1] Load Kernel Modules..."
 cat <<EOF | sudo tee /etc/modules-load.d/containerd.conf
 overlay
 br_netfilter
 EOF
-
+ 
 sudo modprobe overlay
 sudo modprobe br_netfilter
-
+ 
 echo "[Step 2] Set Sysctl Parameters..."
 cat <<EOF | sudo tee /etc/sysctl.d/kubernetes.conf
 net.bridge.bridge-nf-call-ip6tables = 1
 net.bridge.bridge-nf-call-iptables = 1
 net.ipv4.ip_forward = 1
 EOF
-
+ 
 sudo sysctl --system
-
+ 
 echo "[Step 3] Install Required Packages..."
 sudo apt update -y
 sudo apt install -y apt-transport-https ca-certificates curl gpg
-
+ 
 echo "[Step 4] Add Kubernetes Repository..."
 sudo mkdir -p /etc/apt/keyrings
 curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | \
   sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-
+ 
 echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] \
 https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" | \
   sudo tee /etc/apt/sources.list.d/kubernetes.list > /dev/null
-
+ 
 sudo apt-get update
-
+ 
 echo "[Step 5] Install Kubernetes Tools..."
 sudo apt-get install -y kubelet kubeadm kubectl
 sudo apt-mark hold kubelet kubeadm kubectl
-
+ 
 echo "[Step 6] Install and Configure containerd..."
 sudo apt install -y containerd
 sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml
 sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
-
+ 
 sudo systemctl restart containerd
 sudo systemctl enable containerd
-
+ 
 echo "[INFO] Worker node setup complete. Now join this node to the cluster using the kubeadm join command from the master node."
-
-Paste the Kubernetes worker setup script.
-
-Run it and then use the join command provided by the master node.
 ```
-Run the script:
-```bash
+ 
+#### 3. Make script executable and run:
+```sh
 chmod +x worker.sh
 sudo ./worker.sh
 ```
-
----
-
-## 🐳 Step 4: Run Jenkins Container
-
+ 
+#### 4. On the Master Node, verify the node joined:
 ```bash
-docker run -u 0 --privileged --name jenkins -it -d -p 8080:8080 -p 50000:50000 -v /var/run/docker.sock:/var/run/docker.sock -v $(which docker):/usr/bin/docker -v /home/jenkins_home:/var/jenkins_home jenkins/jenkins:latest
+kubectl get nodes 
 ```
-
+ 
+### 🐳 Step 4: Run Jenkins in Docker
 ---
-
-## 🔑 Step 5: Get Jenkins Admin Password
-
+ 
+#### 1. Install Docker
+ 
 ```bash
-docker exec -it jenkins bash
-cat /var/jenkins_home/secrets/initialAdminPassword
+sudo apt install docker.io -y
 ```
-
-Access Jenkins:  
+#### 2. Run Jenkins Container
+```bash
+docker run -u 0 --privileged --name jenkins -it -d \
+-p 8080:8080 -p 50000:50000 \
+-v /var/run/docker.sock:/var/run/docker.sock \
+-v $(which docker):/usr/bin/docker \
+-v /home/jenkins_home:/var/jenkins_home \
+jenkins/jenkins:latest
 ```
-http://<Public-IP>:8080
+ 
+#### 3. Get the initial admin password:
+```bash
+docker exec -it jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 ```
-
+ 
+#### 4. Access Jenkins at:
+```
+http://<Your-Public-IP>:8080
+```
+ 
+### 🔌 Step 5: Configure Jenkins
+ 
+#### 1. Install Required Plugins
+ 
+In Jenkins UI:
+ 
+- Go to **Manage Jenkins** → **Manage Plugins**
+- Under the **Available** tab, search and install:
+  - Pipeline: Stage View
+  - Docker Pipeline
+   - Kubernetes CLI Plugin  
+    *(Upload .hpi manually if offline)*
+ 
 ---
-
-## 🧩 Step 6: Install Jenkins Plugins
-
-Install:
-- `Pipeline: Stage View`
-- `Docker Pipeline`
-
+ 
+#### 2. Add Credentials in Jenkins
+ 
+Go to **Manage Jenkins** → **Credentials** → **(Global)** → **Add Credentials**
+ 
+##### ➤ DockerHub Credentials
+ 
+- **Kind**: Username with password  
+- **ID**: `dockerlogin`  
+- **Username**: _your Docker Hub username_  
+- **Password**: _your Docker Hub password_  
+- **Description**: `dockerlogin`
+ 
+##### ➤ Kubernetes Configuration
+ 
+- **Kind**: Kubernetes configuration (kubeconfig)  
+- **ID**: `kubernetes`  
+- **Description**: `kubernetes`  
+- **Enter content directly**:
+  Run this command on your master node:
+  ```bash
+  cat ~/.kube/config
+  ```
+ 
+### 🔐 Step 6: Generate API Token in Jenkins & Setup GitHub Webhook
+ 
 ---
-
-## ⚙️ Step 7: Configure Kubernetes & Docker Credentials in Jenkins
-
-1. Go to **Manage Jenkins → Credentials → Global → Add Credentials**
-2. Add:
-   - **Kubeconfig** with ID: `kubernetes` (`cat ~/.kube/config`)
-   - **Docker Hub** with ID: `dockerlogin`
-
+ 
+#### 1. Generate Jenkins API Token
+ 
+- Go to **Jenkins Dashboard**
+- Click on your **Username** (top right)
+- Navigate to **Configure → API Token → Add New Token**
+- Enter a **token name**, then click **Generate**
+- **Copy and save** the generated token securely — it will be used in GitHub webhook
+ 
 ---
-
-## 🔗 Step 8: Set up GitHub Webhook
-
-- Go to GitHub → Your Repo → Settings → Webhooks → Add Webhook
-
-Fill:
-- **Payload URL**: `http://<Jenkins-IP>:8080/github-webhook/`
-- **Secret**: Jenkins API Token
-
+ 
+#### 2. Configure GitHub Webhook
+ 
+- Open your **GitHub Repository**
+- Go to **Settings → Webhooks**
+- Click **Add Webhook**
+ 
+Fill in the details:
+ 
+- **Payload URL**:  
+URL: http://<Jenkins-IP>:8080/github-webhook/
+ 
+- **Content type**:  
+application/json
+ 
+- **Secret**:  
+Paste the **Jenkins API Token** you generated earlier
+ 
+- Click **Add Webhook**
 ---
-
-## 🛠️ Step 9: Create Jenkins Pipeline
-
-Create a new pipeline job and use this script:
-
+ 
+🔁 Step 6: Create Jenkins Pipeline Job
+Go to Jenkins → New Item → Pipeline
+Use the following pipeline script:
+ 
 ```groovy
 pipeline {
   environment {
-    dockerimagename = "<dockerhub_username>/<image_name>"
+    dockerimagename = "yourdockerhub/nodeapp"
     dockerImage = ""
   }
-
+ 
   agent any
-
+ 
   stages {
+ 
     stage('Checkout Source') {
       steps {
-        git '<your_repo>'
+        git 'https://github.com/your/repo.git'
       }
     }
-
-    stage('Build image create') {
+ 
+    stage('Build Docker Image') {
       steps {
         script {
           dockerImage = docker.build(dockerimagename)
         }
       }
     }
-
-    stage('Pushing Image') {
+ 
+    stage('Push to DockerHub') {
       environment {
         registryCredential = 'dockerlogin'
       }
@@ -259,31 +312,29 @@ pipeline {
         }
       }
     }
-
-    stage('Deploying App to K8S') {
+ 
+    stage('Deploy to Kubernetes') {
       steps {
         script {
           kubernetesDeploy(configs: "deploymentservice.yml", kubeconfigId: "kubernetes")
         }
       }
     }
+ 
   }
 }
 ```
-
----
-
-## 🚀 Step 10: Trigger Build
-
-- Click **Build Now**
-- Monitor via **Console Output**
-- Verify deployment in Kubernetes cluster and Docker Hub
-
----
-
-## 📁 Project Name Suggestion
-
-**Repository name:** `nodejs-jenkins-k8s-pipeline`
-
----
-Created by: Meet, Dhruv, Bhadresh, Nirmeet, Vardhit, Rutvik  
+ 
+#### Save & click Build Now
+ 
+#### Verify Kubernetes Service
+```
+kubectl get svc
+```
+ 
+### 🌐 Step 7: Access the App
+```
+http://<Node-IP>:<NodePort>
+```
+### ✅ Final Output: Application Response
+![Output Screenshot](output.png)
