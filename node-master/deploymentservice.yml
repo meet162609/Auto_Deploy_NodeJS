@@ -28,7 +28,6 @@ kind: Service
 metadata:
   name: nodeapp-service
 spec:
-  type: NordPort
   selector:
     app: nodeapp 
   type: LoadBalancer
