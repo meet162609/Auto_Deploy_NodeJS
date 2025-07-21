@@ -1,7 +1,13 @@
-var request = require('supertest');
-var app = require('../index.js');
-describe('GET /will', function() {
-    it('respond with hello world', function(done) {
-        request(app).get('/will').expect('{ "response": "Hello World" }', done);
-    });
+// test/test.js
+const request = require('supertest');
+const app = require('../index.js');
+
+describe('GET /will', function () {
+  it('responds with Hello World', function (done) {
+    request(app)
+      .get('/will')
+      .expect('Content-Type', /json/)
+      .expect(200)
+      .expect({ response: 'Hello World' }, done);
+  });
 });
